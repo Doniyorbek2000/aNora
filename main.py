@@ -564,7 +564,7 @@ class NoraLive:
 
         # Premium NORA Upgrades
         self.dictation_mode  = False
-        self.alwaysdata_url  = "https://nora-remote.alwaysdata.net"
+        self.alwaysdata_url  = "https://nora1.alwaysdata.net"
         self.noise_threshold = 15
         self.speak           = True
         self._last_hearing_time = 0.0

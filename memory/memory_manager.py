@@ -144,7 +144,7 @@ def format_memory_for_prompt(memory: dict | None) -> str:
     if not lines:
         return ""
 
-    result = "[USER MEMORY]\n" + "\n".join(f"- {l}" for l in lines)
+    result = "[USER PROFILE & MEMORY (Note: This is information about the USER, NOT about you. You are NORA, the AI!)]\n" + "\n".join(f"- {l}" for l in lines)
     if len(result) > 800:
         result = result[:797] + "…"
 
