@@ -4,6 +4,7 @@ from collections import deque
 from PIL import Image, ImageTk, ImageDraw
 import sys
 from pathlib import Path
+from memory.config_manager import is_configured, save_api_keys
 
 
 def get_base_dir():
@@ -16,26 +17,29 @@ BASE_DIR   = get_base_dir()
 CONFIG_DIR = BASE_DIR / "config"
 API_FILE   = CONFIG_DIR / "api_keys.json"
 
-SYSTEM_NAME = "J.A.R.V.I.S"
-MODEL_BADGE = "MARK XXX"
+SYSTEM_NAME = "NORA"
+MODEL_BADGE = "NORA"
 
-C_BG     = "#000000"
-C_PRI    = "#00d4ff"
-C_MID    = "#007a99"
-C_DIM    = "#003344"
-C_DIMMER = "#001520"
-C_ACC    = "#ff6600"
-C_ACC2   = "#ffcc00"
-C_TEXT   = "#8ffcff"
-C_PANEL  = "#010c10"
-C_GREEN  = "#00ff88"
-C_RED    = "#ff3333"
+# Enhanced color palette with gradients and modern colors
+C_BG     = "#0a0a0a"  # Darker background
+C_PRI    = "#00e5ff"  # Bright cyan
+C_MID    = "#0088aa"  # Medium blue
+C_DIM    = "#004455"  # Dark blue
+C_DIMMER = "#001a22"  # Very dark blue
+C_ACC    = "#ff4081"  # Pink accent
+C_ACC2   = "#ffeb3b"  # Yellow accent
+C_TEXT   = "#e1f5fe"  # Light blue text
+C_PANEL  = "#0f1419"  # Dark panel
+C_GREEN  = "#00e676"  # Bright green
+C_RED    = "#ff5252"  # Bright red
+C_PURPLE = "#9c27b0"  # Purple accent
+C_ORANGE = "#ff9800"  # Orange accent
 
 
-class JarvisUI:
+class NoraUI:
     def __init__(self, face_path, size=None):
         self.root = tk.Tk()
-        self.root.title("J.A.R.V.I.S — MARK XXX")
+        self.root.title("NORA — Personal AI")
         self.root.resizable(False, False)
 
         sw = self.root.winfo_screenwidth()
@@ -122,37 +126,42 @@ class JarvisUI:
         t   = self.tick
         now = time.time()
 
-        if now - self.last_t > (0.14 if self.speaking else 0.55):
+        if now - self.last_t > (0.12 if self.speaking else 0.45):
             if self.speaking:
-                self.target_scale = random.uniform(1.05, 1.11)
-                self.target_halo  = random.uniform(138, 182)
+                self.target_scale = random.uniform(1.08, 1.15)
+                self.target_halo  = random.uniform(160, 220)
             else:
-                self.target_scale = random.uniform(1.001, 1.007)
-                self.target_halo  = random.uniform(50, 68)
+                self.target_scale = random.uniform(1.002, 1.008)
+                self.target_halo  = random.uniform(55, 75)
             self.last_t = now
 
-        sp = 0.35 if self.speaking else 0.16
+        sp = 0.42 if self.speaking else 0.18
         self.scale  += (self.target_scale - self.scale) * sp
         self.halo_a += (self.target_halo  - self.halo_a) * sp
 
-        for i, spd in enumerate([1.2, -0.8, 1.9] if self.speaking else [0.5, -0.3, 0.82]):
-            self.rings_spin[i] = (self.rings_spin[i] + spd) % 360
+        # Enhanced ring animations with varying speeds
+        for i, spd in enumerate([1.5, -1.1, 2.2, 0.8] if self.speaking else [0.6, -0.4, 0.95, 0.3]):
+            if i < len(self.rings_spin):
+                self.rings_spin[i] = (self.rings_spin[i] + spd) % 360
+            else:
+                self.rings_spin.append(0.0)
 
-        self.scan_angle  = (self.scan_angle  + (2.8 if self.speaking else 1.2)) % 360
-        self.scan2_angle = (self.scan2_angle + (-1.7 if self.speaking else -0.68)) % 360
+        self.scan_angle  = (self.scan_angle  + (3.2 if self.speaking else 1.4)) % 360
+        self.scan2_angle = (self.scan2_angle + (-2.1 if self.speaking else -0.75)) % 360
 
-        pspd  = 3.8 if self.speaking else 1.8
-        limit = self.FACE_SZ * 0.72
+        # More dynamic pulse effects
+        pspd  = 4.5 if self.speaking else 2.1
+        limit = self.FACE_SZ * 0.78
         new_p = [r + pspd for r in self.pulse_r if r + pspd < limit]
-        if len(new_p) < 3 and random.random() < (0.06 if self.speaking else 0.022):
+        if len(new_p) < 4 and random.random() < (0.08 if self.speaking else 0.025):
             new_p.append(0.0)
-        self.pulse_r = new_p
+        self.pulse_r = new_p[:4]  # Limit to 4 pulses
 
-        if t % 40 == 0:
+        if t % 35 == 0:
             self.status_blink = not self.status_blink
 
         self._draw()
-        self.root.after(16, self._animate)
+        self.root.after(14, self._animate)  # Slightly faster animation
 
     def _draw(self):
         c    = self.bg
@@ -163,71 +172,119 @@ class JarvisUI:
         FW   = self.FACE_SZ
         c.delete("all")
 
-        for x in range(0, W, 44):
-            for y in range(0, H, 44):
-                c.create_rectangle(x, y, x+1, y+1, fill=C_DIMMER, outline="")
+        # Enhanced background grid with gradient
+        for x in range(0, W, 38):
+            for y in range(0, H, 38):
+                intensity = int(25 + 15 * math.sin(x * 0.01 + y * 0.01 + t * 0.02))
+                color = f"#{intensity:02x}{intensity:02x}{intensity+10:02x}"
+                c.create_rectangle(x, y, x+1, y+1, fill=color, outline="")
 
-        for r in range(int(FW * 0.54), int(FW * 0.28), -22):
-            frac = 1.0 - (r - FW * 0.28) / (FW * 0.26)
-            ga   = max(0, min(255, int(self.halo_a * 0.09 * frac)))
-            gh   = f"{ga:02x}"
-            c.create_oval(FCX-r, FCY-r, FCX+r, FCY+r,
-                          outline=f"#00{gh}ff", width=2)
+        # Multi-layered halo effects with different colors
+        halo_colors = [C_PRI, C_ACC, C_PURPLE, C_ORANGE]
+        for i, color in enumerate(halo_colors):
+            for r in range(int(FW * (0.6 - i*0.08)), int(FW * (0.35 - i*0.08)), -18):
+                frac = 1.0 - (r - FW * (0.35 - i*0.08)) / (FW * 0.25)
+                ga   = max(0, min(255, int(self.halo_a * 0.08 * frac * (1 + i*0.3))))
+                if color == C_PRI:
+                    c.create_oval(FCX-r, FCY-r, FCX+r, FCY+r,
+                                  outline=self._ac(0, 229, 255, ga), width=2)
+                elif color == C_ACC:
+                    c.create_oval(FCX-r, FCY-r, FCX+r, FCY+r,
+                                  outline=self._ac(255, 64, 129, ga), width=2)
+                elif color == C_PURPLE:
+                    c.create_oval(FCX-r, FCY-r, FCX+r, FCY+r,
+                                  outline=self._ac(156, 39, 176, ga), width=2)
+                else:
+                    c.create_oval(FCX-r, FCY-r, FCX+r, FCY+r,
+                                  outline=self._ac(255, 152, 0, ga), width=2)
 
-        for pr in self.pulse_r:
-            pa = max(0, int(220 * (1.0 - pr / (FW * 0.72))))
+        # Enhanced pulse rings with color variation
+        pulse_colors = [C_PRI, C_ACC, C_GREEN, C_PURPLE]
+        for i, pr in enumerate(self.pulse_r):
+            color = pulse_colors[i % len(pulse_colors)]
+            pa = max(0, int(240 * (1.0 - pr / (FW * 0.78))))
             r  = int(pr)
-            c.create_oval(FCX-r, FCY-r, FCX+r, FCY+r,
-                          outline=self._ac(0, 212, 255, pa), width=2)
+            if color == C_PRI:
+                c.create_oval(FCX-r, FCY-r, FCX+r, FCY+r,
+                              outline=self._ac(0, 229, 255, pa), width=3)
+            elif color == C_ACC:
+                c.create_oval(FCX-r, FCY-r, FCX+r, FCY+r,
+                              outline=self._ac(255, 64, 129, pa), width=3)
+            elif color == C_GREEN:
+                c.create_oval(FCX-r, FCY-r, FCX+r, FCY+r,
+                              outline=self._ac(0, 230, 118, pa), width=3)
+            else:
+                c.create_oval(FCX-r, FCY-r, FCX+r, FCY+r,
+                              outline=self._ac(156, 39, 176, pa), width=3)
 
+        # Enhanced rotating rings with more dynamic effects
         for idx, (r_frac, w_ring, arc_l, gap) in enumerate([
-                (0.47, 3, 110, 75), (0.39, 2, 75, 55), (0.31, 1, 55, 38)]):
+                (0.52, 4, 120, 80), (0.44, 3, 85, 60), (0.36, 2, 65, 45), (0.28, 1, 45, 30)]):
             ring_r = int(FW * r_frac)
-            base_a = self.rings_spin[idx]
-            a_val  = max(0, min(255, int(self.halo_a * (1.0 - idx * 0.18))))
-            col    = self._ac(0, 212, 255, a_val)
+            base_a = self.rings_spin[idx] if idx < len(self.rings_spin) else 0
+            a_val  = max(0, min(255, int(self.halo_a * (1.2 - idx * 0.25))))
+
+            # Color cycle for rings
+            ring_color = [C_PRI, C_ACC, C_PURPLE, C_ORANGE][idx % 4]
+            if ring_color == C_PRI:
+                col = self._ac(0, 229, 255, a_val)
+            elif ring_color == C_ACC:
+                col = self._ac(255, 64, 129, a_val)
+            elif ring_color == C_PURPLE:
+                col = self._ac(156, 39, 176, a_val)
+            else:
+                col = self._ac(255, 152, 0, a_val)
+
             for s in range(360 // (arc_l + gap)):
                 start = (base_a + s * (arc_l + gap)) % 360
                 c.create_arc(FCX-ring_r, FCY-ring_r, FCX+ring_r, FCY+ring_r,
                              start=start, extent=arc_l,
                              outline=col, width=w_ring, style="arc")
 
-        sr      = int(FW * 0.49)
-        scan_a  = min(255, int(self.halo_a * 1.4))
-        arc_ext = 70 if self.speaking else 42
+        # Dual scanning arcs with enhanced effects
+        sr      = int(FW * 0.53)
+        scan_a  = min(255, int(self.halo_a * 1.6))
+        arc_ext = 80 if self.speaking else 48
+
+        # Primary scan (cyan)
         c.create_arc(FCX-sr, FCY-sr, FCX+sr, FCY+sr,
                      start=self.scan_angle, extent=arc_ext,
-                     outline=self._ac(0, 212, 255, scan_a), width=3, style="arc")
+                     outline=self._ac(0, 229, 255, scan_a), width=4, style="arc")
+
+        # Secondary scan (pink)
         c.create_arc(FCX-sr, FCY-sr, FCX+sr, FCY+sr,
                      start=self.scan2_angle, extent=arc_ext,
-                     outline=self._ac(255, 100, 0, scan_a // 2), width=2, style="arc")
+                     outline=self._ac(255, 64, 129, scan_a // 1.5), width=3, style="arc")
 
-        t_out = int(FW * 0.495)
-        t_in  = int(FW * 0.472)
-        a_mk  = self._ac(0, 212, 255, 155)
-        for deg in range(0, 360, 10):
+        # Enhanced targeting crosshairs
+        t_out = int(FW * 0.52)
+        t_in  = int(FW * 0.49)
+        a_mk  = self._ac(0, 229, 255, 180)
+        for deg in range(0, 360, 8):  # More ticks
             rad = math.radians(deg)
-            inn = t_in if deg % 30 == 0 else t_in + 5
+            inn = t_in if deg % 45 == 0 else t_in + 6
             c.create_line(FCX + t_out * math.cos(rad), FCY - t_out * math.sin(rad),
                           FCX + inn  * math.cos(rad), FCY - inn  * math.sin(rad),
-                          fill=a_mk, width=1)
+                          fill=a_mk, width=2)
 
-        ch_r = int(FW * 0.50)
-        gap  = int(FW * 0.15)
-        ch_a = self._ac(0, 212, 255, int(self.halo_a * 0.55))
+        # Larger crosshair lines
+        ch_r = int(FW * 0.54)
+        gap  = int(FW * 0.18)
+        ch_a = self._ac(0, 229, 255, int(self.halo_a * 0.65))
         for x1, y1, x2, y2 in [
                 (FCX - ch_r, FCY, FCX - gap, FCY), (FCX + gap, FCY, FCX + ch_r, FCY),
                 (FCX, FCY - ch_r, FCX, FCY - gap), (FCX, FCY + gap, FCX, FCY + ch_r)]:
-            c.create_line(x1, y1, x2, y2, fill=ch_a, width=1)
+            c.create_line(x1, y1, x2, y2, fill=ch_a, width=3)
 
-        blen = 22
-        bc   = self._ac(0, 212, 255, 200)
+        # Corner brackets with enhanced styling
+        blen = 28
+        bc   = self._ac(0, 229, 255, 220)
         hl = FCX - FW // 2; hr = FCX + FW // 2
         ht = FCY - FW // 2; hb = FCY + FW // 2
         for bx, by, sdx, sdy in [(hl, ht, 1, 1), (hr, ht, -1, 1),
                                    (hl, hb, 1, -1), (hr, hb, -1, -1)]:
-            c.create_line(bx, by, bx + sdx * blen, by,            fill=bc, width=2)
-            c.create_line(bx, by, bx,               by + sdy * blen, fill=bc, width=2)
+            c.create_line(bx, by, bx + sdx * blen, by,            fill=bc, width=3)
+            c.create_line(bx, by, bx,               by + sdy * blen, fill=bc, width=3)
 
         if self._has_face:
             fw = int(FW * self.scale)
@@ -255,7 +312,7 @@ class JarvisUI:
         c.create_line(0, HDR, W, HDR, fill=C_MID, width=1)
         c.create_text(W // 2, 22, text=SYSTEM_NAME,
                       fill=C_PRI, font=("Courier", 18, "bold"))
-        c.create_text(W // 2, 44, text="Just A Rather Very Intelligent System",
+        c.create_text(W // 2, 44, text="NORA — Intelligent Personal Assistant",
                       fill=C_MID, font=("Courier", 9))
         c.create_text(16, 31,    text=MODEL_BADGE,
                       fill=C_DIM, font=("Courier", 9), anchor="w")
@@ -289,7 +346,7 @@ class JarvisUI:
         c.create_rectangle(0, H - 28, W, H, fill="#00080d", outline="")
         c.create_line(0, H - 28, W, H - 28, fill=C_DIM, width=1)
         c.create_text(W // 2, H - 14, fill=C_DIM, font=("Courier", 8),
-                      text="FatihMakes Industries  ·  CLASSIFIED  ·  MARK XXX")
+                      text="FatihMakes Industries  ·  CLASSIFIED  ·  NORA")
 
     def write_log(self, text: str):
         self.typing_queue.append(text)
@@ -332,10 +389,10 @@ class JarvisUI:
         self.status_text = "ONLINE"
 
     def _api_keys_exist(self):
-        return API_FILE.exists()
+        return is_configured()
 
     def wait_for_api_key(self):
-        """Block until API key is saved (called from main thread before starting JARVIS)."""
+        """Block until API key is saved (called from main thread before starting NORA)."""
         while not self._api_key_ready:
             time.sleep(0.1)
 
@@ -349,7 +406,7 @@ class JarvisUI:
         tk.Label(self.setup_frame, text="◈  INITIALISATION REQUIRED",
                  fg=C_PRI, bg="#00080d", font=("Courier", 13, "bold")).pack(pady=(18, 4))
         tk.Label(self.setup_frame,
-                 text="Enter your Gemini API key to boot J.A.R.V.I.S.",
+                 text="Enter your Gemini API key to boot NORA.",
                  fg=C_MID, bg="#00080d", font=("Courier", 9)).pack(pady=(0, 10))
 
         tk.Label(self.setup_frame, text="GEMINI API KEY",
@@ -371,10 +428,8 @@ class JarvisUI:
         gemini = self.gemini_entry.get().strip()
         if not gemini:
             return
-        os.makedirs(CONFIG_DIR, exist_ok=True)
-        with open(API_FILE, "w", encoding="utf-8") as f:
-            json.dump({"gemini_api_key": gemini}, f, indent=4)
+        save_api_keys(gemini)
         self.setup_frame.destroy()
         self._api_key_ready = True
         self.status_text = "ONLINE"
-        self.write_log("SYS: Systems initialised. JARVIS online.")
+        self.write_log("SYS: Systems initialised. NORA online.")

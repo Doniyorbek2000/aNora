@@ -1,4 +1,4 @@
-# 🤖 MARK XXX
+# 🤖 NORA
 
 **Watch The Detailed Video To Set-up This Model**: https://www.youtube.com/watch?v=-YjbWjv1tJg
 
@@ -10,7 +10,7 @@ Built for intelligent automation.
 
 ## ✨ Overview
 
-**MARK XXX** is an advanced voice-driven AI assistant designed to turn your computer into an interactive intelligent system.
+**NORA** is an advanced voice-driven AI assistant designed to turn your computer into an interactive intelligent system.
 
 Speak naturally — it listens, understands context, responds with a human-like voice, and executes tasks across your system automatically.
 
@@ -35,6 +35,8 @@ python setup.py
 python main.py
 ```
 
+> Windows only: this project now uses `sounddevice` instead of `pyaudio`, which avoids the Python 3.14 `pipwin/js2py` compatibility issue.
+
 Enter your free Gemini API key on first launch.
 System ready in minutes.
 
@@ -55,5 +57,5 @@ Instagram Account: [text](https://www.instagram.com/fatihmakes/)
 Personal and non-commercial use only.
 Licensed under **Creative Commons BY-NC 4.0**.
 
-Engineered by a 17-year-old building a real JARVIS-style assistant.
+Engineered by a 17-year-old building a modern NORA-style assistant.
 ⭐ Star the repository to support the project.

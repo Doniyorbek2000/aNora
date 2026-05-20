@@ -295,6 +295,42 @@ class _BrowserThread:
         except Exception as e:
             return f"Key error: {e}"
 
+    async def _download(
+        self,
+        url: str = None,
+        selector: str = None,
+        text: str = None,
+        save_as: str = None,
+    ) -> str:
+        page = await self._get_page()
+
+        if url:
+            await page.goto(url, wait_until="domcontentloaded", timeout=15000)
+
+        if not selector and not text:
+            return "No download target provided. Use selector or text to click the download link."
+
+        try:
+            async with page.expect_download(timeout=20000) as download_info:
+                if selector:
+                    await page.click(selector, timeout=10000)
+                else:
+                    await page.get_by_text(text, exact=False).first.click(timeout=10000)
+
+            download = await download_info.value
+            downloads_dir = Path.home() / "Downloads"
+            downloads_dir.mkdir(parents=True, exist_ok=True)
+            filename = save_as or download.suggested_filename or "downloaded_file"
+            destination = downloads_dir / filename
+            await download.save_as(str(destination))
+
+            return f"Downloaded {download.suggested_filename} to {destination}."
+
+        except PlaywrightTimeout:
+            return "Download did not start within 20 seconds."
+        except Exception as e:
+            return f"Download error: {e}"
+
     async def _get_text(self) -> str:
         page = await self._get_page()
         try:
@@ -457,6 +493,14 @@ def browser_control(
 
         elif action == "press":
             result = _bt.run(_bt._press(parameters.get("key", "Enter")))
+
+        elif action == "download":
+            result = _bt.run(_bt._download(
+                url=parameters.get("url"),
+                selector=parameters.get("selector"),
+                text=parameters.get("text"),
+                save_as=parameters.get("save_as"),
+            ))
 
         elif action == "close":
             result = _bt.run(_bt._close_browser())

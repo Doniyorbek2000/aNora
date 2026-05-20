@@ -20,7 +20,7 @@ import threading
 import cv2
 import mss
 import mss.tools
-import pyaudio
+import sounddevice as sd
 from pathlib import Path
 
 try:
@@ -41,7 +41,6 @@ BASE_DIR        = get_base_dir()
 API_CONFIG_PATH = BASE_DIR / "config" / "api_keys.json"
 
 LIVE_MODEL          = "models/gemini-2.5-flash-native-audio-preview-12-2025"
-FORMAT              = pyaudio.paInt16
 CHANNELS            = 1
 RECEIVE_SAMPLE_RATE = 24000
 CHUNK_SIZE          = 1024
@@ -51,13 +50,12 @@ IMG_MAX_H = 360
 JPEG_Q    = 55
 
 SYSTEM_PROMPT = (
-    "You are JARVIS from Iron Man movies. "
-    "Analyze images with technical precision and intelligence. "
-    "Help the user in a way they can understand — don't be overly complex. "
-    "Be concise, smart, and helpful like Tony Stark's AI assistant. "
-    "Respond in maximum 2 short sentences. Speed is priority. "
-    "Address the user as 'sir' for a tone of respect. "
-    "Ask if the user needs any further help with their problem."
+    "You are NORA, a warm and intelligent female assistant. "
+    "Analyze images with technical precision and helpful insight. "
+    "Help the user in a clear, friendly way — be conversational but concise. "
+    "Be smart, helpful, and maintain a warm, professional tone. "
+    "Respond naturally without strict sentence limits. Speed matters but clarity comes first. "
+    "Address the user naturally and ask if they need further assistance."
 )
 
 
@@ -183,7 +181,6 @@ class _LiveSession:
         self._audio_in:  asyncio.Queue | None             = None
         self._ready:     threading.Event                  = threading.Event()
         self._player                                      = None
-        self._pya                                         = pyaudio.PyAudio()
         self._send_lock: asyncio.Lock | None              = None
 
     def start(self, player=None):
@@ -221,7 +218,7 @@ class _LiveSession:
             speech_config=types.SpeechConfig(
                 voice_config=types.VoiceConfig(
                     prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                        voice_name="Charon"
+                        voiceName="Kore"
                     )
                 )
             ),
@@ -291,7 +288,7 @@ class _LiveSession:
                     if transcript_buf and self._player:
                         full = re.sub(r'\s+', ' ', " ".join(transcript_buf)).strip()
                         if full:
-                            self._player.write_log(f"Jarvis: {full}")
+                            self._player.write_log(f"Nora: {full}")
                             print(f"[ScreenProcess] 💬 {full}")
                     transcript_buf = []
 
@@ -301,16 +298,18 @@ class _LiveSession:
             await asyncio.sleep(0.3)
 
     async def _play_loop(self):
-        stream = await asyncio.to_thread(
-            self._pya.open,
-            format=FORMAT, channels=CHANNELS,
-            rate=RECEIVE_SAMPLE_RATE, output=True,
+        stream = sd.RawOutputStream(
+            samplerate=RECEIVE_SAMPLE_RATE,
+            channels=CHANNELS,
+            dtype="int16",
         )
+        stream.start()
         try:
             while True:
                 chunk = await self._audio_in.get()
                 await asyncio.to_thread(stream.write, chunk)
         finally:
+            stream.stop()
             stream.close()
 
     def analyze(self, image_bytes: bytes, mime_type: str, user_text: str):
@@ -373,6 +372,84 @@ def screen_process(
     print(f"[ScreenProcess] 📦 {len(image_bytes)} bytes → sending")
     _live.analyze(image_bytes, mime_type, user_text)
     return True
+
+
+def auto_screen_analysis(
+    question: str = "What's currently visible on the computer screen? Describe what you see and any important information.",
+    player=None,
+    session_memory=None,
+) -> bool:
+    """
+    Automatically capture and analyze the current screen content.
+    Useful for when NORA needs to see what's on the user's screen.
+    """
+    print("[ScreenProcess] 🔍 Auto-analyzing screen...")
+
+    _ensure_started(player=player)
+
+    try:
+        image_bytes = _capture_screenshot()
+        mime_type   = "image/jpeg" if _PIL_OK else "image/png"
+        print("[ScreenProcess] 🖥️ Auto screen captured")
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        print(f"[ScreenProcess] ❌ Auto capture error: {e}")
+        return False
+
+    print(f"[ScreenProcess] 📦 {len(image_bytes)} bytes → analyzing")
+    _live.analyze(image_bytes, mime_type, question)
+    return True
+
+
+def monitor_screen_changes(
+    interval_seconds: int = 30,
+    change_threshold: float = 0.1,
+    player=None,
+    session_memory=None,
+) -> None:
+    """
+    Continuously monitor screen for significant changes and analyze when detected.
+    Runs in background thread.
+    """
+    import threading
+    import time
+    import numpy as np
+
+    def _monitor_loop():
+        last_image = None
+        print(f"[ScreenMonitor] 👁️ Starting screen monitoring (interval: {interval_seconds}s, threshold: {change_threshold})")
+
+        while True:
+            try:
+                # Capture current screen
+                image_bytes = _capture_screenshot()
+                current_image = np.frombuffer(image_bytes, dtype=np.uint8)
+
+                if last_image is not None:
+                    # Calculate difference
+                    if len(current_image) == len(last_image):
+                        diff = np.abs(current_image.astype(np.float32) - last_image.astype(np.float32))
+                        mean_diff = np.mean(diff) / 255.0
+
+                        if mean_diff > change_threshold:
+                            print(f"[ScreenMonitor] 📊 Change detected (diff: {mean_diff:.2f}) — analyzing...")
+                            auto_screen_analysis(
+                                "The screen has changed significantly. What's different now compared to before?",
+                                player=player,
+                                session_memory=session_memory
+                            )
+
+                last_image = current_image
+                time.sleep(interval_seconds)
+
+            except Exception as e:
+                print(f"[ScreenMonitor] ⚠️ Monitor error: {e}")
+                time.sleep(5)  # Wait before retrying
+
+    # Start monitoring in background thread
+    monitor_thread = threading.Thread(target=_monitor_loop, daemon=True, name="ScreenMonitor")
+    monitor_thread.start()
+    print("[ScreenMonitor] ✅ Screen monitoring started in background")
 
 
 def warmup_session(player=None):

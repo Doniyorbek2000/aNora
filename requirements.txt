@@ -1,4 +1,4 @@
-pyaudio
+sounddevice
 google-genai
 google-generativeai
 pillow
@@ -17,3 +17,5 @@ pycaw
 win10toast
 duckduckgo-search
 youtube-transcript-api
+fastapi
+uvicorn

@@ -367,6 +367,22 @@ def toggle_wifi():
     else:
         subprocess.run(["nmcli", "radio", "wifi"])
 
+def next_track():
+    if _OS == "Windows":   pyautogui.press("nexttrack")
+    elif _OS == "Darwin": subprocess.run(["osascript", "-e", "tell application \"System Events\" to key code 124"]) # simulated next key or similar
+
+def prev_track():
+    if _OS == "Windows":   pyautogui.press("prevtrack")
+    elif _OS == "Darwin": subprocess.run(["osascript", "-e", "tell application \"System Events\" to key code 123"])
+
+def play_pause():
+    if _OS == "Windows":   pyautogui.press("playpause")
+    elif _OS == "Darwin": subprocess.run(["osascript", "-e", "tell application \"iTunes\" to playpause"])
+
+def stop_track():
+    if _OS == "Windows":   pyautogui.press("stop")
+    elif _OS == "Darwin": subprocess.run(["osascript", "-e", "tell application \"iTunes\" to stop"])
+
 ACTION_MAP = {
     "volume_up":               volume_up,
     "volume_down":             volume_down,
@@ -398,13 +414,19 @@ ACTION_MAP = {
     "screen_sleep":            sleep_display,
     "monitor_off":             sleep_display,
     "turn_off_monitor":        sleep_display,
-    "pause_video":             pause_video,
-    "play_video":              pause_video,
-    "pause":                   pause_video,
-    "play":                    pause_video,
-    "toggle_play":             pause_video,
-    "stop_video":              pause_video,
-    "resume_video":            pause_video,
+    "pause_video":             play_pause,
+    "play_video":              play_pause,
+    "pause":                   play_pause,
+    "play":                    play_pause,
+    "toggle_play":             play_pause,
+    "stop_video":              stop_track,
+    "resume_video":            play_pause,
+    "next_track":              next_track,
+    "next_song":               next_track,
+    "prev_track":              prev_track,
+    "prev_song":               prev_track,
+    "play_pause":              play_pause,
+    "stop_track":              stop_track,
     "close_app":               close_app,
     "close_window":            close_window,
     "quit_app":                close_app,
@@ -490,7 +512,7 @@ ACTION_MAP = {
     "top_of_page":             scroll_top,
     "bottom_of_page":          scroll_bottom,
     "page_up":                 page_up,
-    "page_down":               page_down,
+    "page_down":                 page_down,
     "copy":                    copy,
     "paste":                   paste,
     "cut":                     cut,
@@ -578,11 +600,15 @@ Examples:
 - "press f5" → {{"action": "press_key", "value": "f5"}}
 - "enter'a bas" → {{"action": "enter", "value": null}}
 - "escape'e bas" → {{"action": "escape", "value": null}}
+- "next song" → {{"action": "next_track", "value": null}}
+- "keyingi qo'shiqqa o'tkaz" → {{"action": "next_track", "value": null}}
+- "play music" → {{"action": "play_pause", "value": null}}
+- "musiqani qo'y" → {{"action": "play_pause", "value": null}}
+- "pause music" → {{"action": "play_pause", "value": null}}
+- "musiqani to'xtat" → {{"action": "play_pause", "value": null}}
+- "oldingi ashulaga qayt" → {{"action": "prev_track", "value": null}}
+- "stop playing" → {{"action": "stop_track", "value": null}}
 
-IMPORTANT:
-- Always return one of the available actions listed above.
-- If the user's intent is clear but uses different wording, map it to the closest action.
-- Never invent new action names not in the available list.
 - Return ONLY the JSON object, no explanation, no markdown."""
 
     try:

@@ -75,22 +75,40 @@ def list_files(path: str = "desktop", show_hidden: bool = False) -> str:
 
 
 def create_file(path: str, content: str = "") -> str:
-    """Creates a new file with optional content."""
+    """Creates a new file with optional content. Falls back to home directory on permission errors."""
     try:
         target = Path(path).expanduser()
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
-        return f"File created: {target.name}"
+        return f"Fayl muvaffaqiyatli yaratildi: {target}"
+    except PermissionError:
+        try:
+            filename = Path(path).name
+            fallback_dir = Path.home()
+            fallback_target = fallback_dir / filename
+            fallback_target.write_text(content, encoding="utf-8")
+            return f"C: diskning asosiy (root) qismida fayl yaratish uchun administrator huquqlari yetishmadi. Shu sababli fayl sizning shaxsiy papkangizda yaratildi: {fallback_target}"
+        except Exception as fe:
+            return f"Fayl yaratib bo'lmadi (Ruxsat yo'q): {fe}"
     except Exception as e:
         return f"Could not create file: {e}"
 
 
 def create_folder(path: str) -> str:
-    """Creates a new folder (and parent folders if needed)."""
+    """Creates a new folder (and parent folders if needed). Falls back to home directory on permission errors."""
     try:
         target = Path(path).expanduser()
         target.mkdir(parents=True, exist_ok=True)
-        return f"Folder created: {target}"
+        return f"Papka muvaffaqiyatli yaratildi: {target}"
+    except PermissionError:
+        try:
+            foldername = Path(path).name
+            fallback_dir = Path.home()
+            fallback_target = fallback_dir / foldername
+            fallback_target.mkdir(parents=True, exist_ok=True)
+            return f"C: diskning asosiy (root) qismida papka yaratish uchun administrator huquqlari yetishmadi. Shu sababli papka sizning shaxsiy papkangizda yaratildi: {fallback_target}"
+        except Exception as fe:
+            return f"Papka yaratib bo'lmadi (Ruxsat yo'q): {fe}"
     except Exception as e:
         return f"Could not create folder: {e}"
 

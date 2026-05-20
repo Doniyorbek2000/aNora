@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+build/
+dist/
+NoraSetup/
+NoraSetup.zip
+*.log
+.vscode/

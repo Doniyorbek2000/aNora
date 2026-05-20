@@ -1,5 +1,5 @@
 # actions/send_message.py
-# Universal messaging — WhatsApp & Instagram
+# Universal messaging — WhatsApp, Telegram & Instagram
 # Uses visual element detection (pyautogui + screen search) instead of
 # hardcoded tab/click sequences — works on any screen resolution.
 
