@@ -12,8 +12,7 @@ def deploy():
     client.connect(host, username=user, password=password)
 
     commands = [
-        "cd ~/www && rm -rf *",
-        "cd ~/www && git clone https://github.com/Doniyorbek2000/aNora.git .",
+        "cd ~/www && if [ -d .git ]; then git fetch --all && git reset --hard origin/main; else rm -rf * .* 2>/dev/null; git clone https://github.com/Doniyorbek2000/aNora.git .; fi",
         "pip install fastapi uvicorn pydantic --user",
         "mkdir -p ~/www/tmp && touch ~/www/tmp/restart.txt" # Create tmp and restart Passenger
     ]
