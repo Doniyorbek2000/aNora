@@ -121,7 +121,8 @@ class OfflineNLU:
         cmd = raw.lower()
         
         # 1. Simple greetings & chit-chat
-        if any(w in cmd for w in ["salom", "hello", "hi"]):
+        words = set(re.findall(r"\b\w+\b", cmd))
+        if "salom" in cmd or "hello" in words or "hi" in words:
             return {
                 "action": "reply",
                 "response": "Salom! Men NORAman. Hozirda oflayn rejimdaman, lekin kompyuteringizni boshqarishga doir buyruqlaringizni bajara olaman! Qanday yordam bera olaman?"
@@ -145,7 +146,7 @@ class OfflineNLU:
                 "response": "Arziydi! Har doim sizga yordam berishdan xursandman."
             }
             
-        if any(w in cmd for w in ["xayr", "bye", "goodbye"]):
+        if "xayr" in cmd or "bye" in words or "goodbye" in words:
             return {
                 "action": "reply",
                 "response": "Xayr! Salomat bo'ling. Ishingiz muvaffaqiyatli bo'lsin!"
