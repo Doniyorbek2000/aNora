@@ -83,11 +83,11 @@ class NoraUI:
         self.bg.place(x=0, y=0)
 
         LW = int(W * 0.72)
-        LH = 138
+        LH = 112  # Shortened log height to comfortably fit entry box
         self.log_frame = tk.Frame(self.root, bg=C_PANEL,
                                   highlightbackground=C_MID,
                                   highlightthickness=1)
-        self.log_frame.place(x=(W - LW) // 2, y=H - LH - 36, width=LW, height=LH)
+        self.log_frame.place(x=(W - LW) // 2, y=H - LH - 74, width=LW, height=LH)
         self.log_text = tk.Text(self.log_frame, fg=C_TEXT, bg=C_PANEL,
                                 insertbackground=C_TEXT, borderwidth=0,
                                 wrap="word", font=("Courier", 10), padx=10, pady=6)
@@ -96,6 +96,28 @@ class NoraUI:
         self.log_text.tag_config("you", foreground="#e8e8e8")
         self.log_text.tag_config("ai",  foreground=C_PRI)
         self.log_text.tag_config("sys", foreground=C_ACC2)
+
+        # Beautiful text input entry for typing commands
+        self.entry_frame = tk.Frame(self.root, bg="#000d12",
+                                    highlightbackground=C_MID,
+                                    highlightthickness=1)
+        self.entry_frame.place(x=(W - LW) // 2, y=H - 62, width=LW, height=28)
+        
+        self.entry_field = tk.Entry(self.entry_frame, bg="#000d12", fg=C_TEXT,
+                                    insertbackground=C_TEXT, borderwidth=0,
+                                    font=("Courier", 10))
+        self.entry_field.pack(side="left", fill="both", expand=True, padx=8, pady=4)
+        
+        # Add subtle placeholder text
+        self.entry_field.insert(0, "Buyruqni shu yerga yozing va Enter bosing...")
+        self.entry_field.configure(fg=C_DIM)
+        
+        # Binding events for placeholder and submission
+        self.entry_field.bind("<FocusIn>", self._clear_placeholder)
+        self.entry_field.bind("<FocusOut>", self._restore_placeholder)
+        self.entry_field.bind("<Return>", self._submit_text_command)
+        
+        self.command_callback = None
 
         self._api_key_ready = self._api_keys_exist()
         if not self._api_key_ready:
@@ -323,6 +345,8 @@ class NoraUI:
         sy = FCY + FW // 2 + 45
         if self.speaking:
             stat, sc = "● SPEAKING", C_ACC
+        elif self.status_text == "OFFLINE":
+            stat, sc = "● OFFLINE", C_ACC
         else:
             sym = "●" if self.status_blink else "○"
             stat, sc = f"{sym} {self.status_text}", C_PRI
@@ -433,3 +457,31 @@ class NoraUI:
         self._api_key_ready = True
         self.status_text = "ONLINE"
         self.write_log("SYS: Systems initialised. NORA online.")
+
+    def _clear_placeholder(self, event):
+        if self.entry_field.get() == "Buyruqni shu yerga yozing va Enter bosing...":
+            self.entry_field.delete(0, tk.END)
+            self.entry_field.configure(fg=C_TEXT)
+
+    def _restore_placeholder(self, event):
+        if not self.entry_field.get().strip():
+            self.entry_field.delete(0, tk.END)
+            self.entry_field.insert(0, "Buyruqni shu yerga yozing va Enter bosing...")
+            self.entry_field.configure(fg=C_DIM)
+
+    def _submit_text_command(self, event):
+        text = self.entry_field.get().strip()
+        if not text or text == "Buyruqni shu yerga yozing va Enter bosing...":
+            return
+            
+        # Clear field and restore placeholder, focus away
+        self.entry_field.delete(0, tk.END)
+        self.root.focus_set()
+        self._restore_placeholder(None)
+        
+        # Show in log immediately
+        self.write_log(f"You: {text}")
+        
+        # Trigger external callback
+        if self.command_callback:
+            self.command_callback(text)

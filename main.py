@@ -23,6 +23,7 @@ from memory.memory_manager import load_memory, update_memory, format_memory_for_
 from memory.config_manager import get_gemini_key, is_configured
 
 from agent.task_queue import get_queue
+from core.offline_engine import is_online, speak_offline, OfflineNLU
 
 from actions.flight_finder import flight_finder
 from actions.open_app         import open_app
@@ -583,6 +584,150 @@ class NoraLive:
         config = load_api_keys()
         self.alwaysdata_url = config.get("alwaysdata_url", "http://127.0.0.1:8000").rstrip("/")
 
+        # Initialize offline capability components
+        self.offline_nlu = OfflineNLU()
+        self.is_currently_offline = False
+
+    async def handle_ui_command(self, cmd: str) -> None:
+        """Callback triggered when the user types a command in the UI."""
+        cmd = cmd.strip()
+        if not cmd:
+            return
+        if self.is_currently_offline:
+            await self._process_offline_command(cmd)
+        else:
+            await self._send_text_command(cmd)
+
+    async def _process_offline_command(self, cmd: str) -> None:
+        """Parses and executes commands offline."""
+        parsed = self.offline_nlu.parse_command(cmd)
+        action = parsed.get("action")
+        params = parsed.get("params", {})
+        response = parsed.get("response", "")
+        
+        self.ui.write_log(f"Nora: {response}")
+        speak_offline(response, ui=self.ui)
+        
+        if action == "reply":
+            return
+            
+        try:
+            loop = asyncio.get_event_loop()
+            if action == "open_app":
+                await loop.run_in_executor(None, lambda: open_app(parameters=params, response=None, player=self.ui))
+            elif action == "computer_settings":
+                await loop.run_in_executor(None, lambda: computer_settings(parameters=params, response=None, player=self.ui))
+            elif action == "desktop_control":
+                await loop.run_in_executor(None, lambda: desktop_control(parameters=params, player=self.ui))
+            elif action == "file_controller":
+                await loop.run_in_executor(None, lambda: file_controller(parameters=params, player=self.ui))
+            elif action == "cmd_control":
+                await loop.run_in_executor(None, lambda: cmd_control(parameters=params, player=self.ui))
+        except Exception as e:
+            print(f"[Offline Tool Execution Failed] {e}")
+            self.ui.write_log(f"SYS: Buyruq bajarishda xato: {e}")
+
+    async def _process_offline_audio(self):
+        """Consumes PCM bytes from out_queue offline, detects speech boundaries, and transcribes."""
+        import speech_recognition as sr
+        
+        speech_buffer = bytearray()
+        last_speech_time = 0.0
+        is_accumulating = False
+        r = sr.Recognizer()
+        
+        print("[NORA] 🎙️ Offline voice processor active")
+        
+        while self.is_currently_offline:
+            try:
+                try:
+                    data_bytes = await asyncio.wait_for(self.out_queue.get(), timeout=0.1)
+                except asyncio.TimeoutError:
+                    if is_accumulating and time.time() - last_speech_time > 1.5:
+                        audio_to_process = bytes(speech_buffer)
+                        speech_buffer = bytearray()
+                        is_accumulating = False
+                        if self.ui.status_text == "HEARING":
+                            self.ui.status_text = "OFFLINE"
+                        asyncio.create_task(self._transcribe_and_execute_offline(audio_to_process, r))
+                    continue
+                
+                is_silent = all(b == 0 for b in data_bytes)
+                if not is_silent:
+                    speech_buffer.extend(data_bytes)
+                    last_speech_time = time.time()
+                    if not is_accumulating:
+                        is_accumulating = True
+                        if self.ui.status_text == "OFFLINE":
+                            self.ui.status_text = "HEARING"
+                else:
+                    if is_accumulating and time.time() - last_speech_time > 1.5:
+                        audio_to_process = bytes(speech_buffer)
+                        speech_buffer = bytearray()
+                        is_accumulating = False
+                        if self.ui.status_text == "HEARING":
+                            self.ui.status_text = "OFFLINE"
+                        asyncio.create_task(self._transcribe_and_execute_offline(audio_to_process, r))
+            except Exception as e:
+                print(f"[Offline voice process error] {e}")
+                await asyncio.sleep(0.1)
+
+    async def _transcribe_and_execute_offline(self, raw_pcm, recognizer):
+        import speech_recognition as sr
+        audio_data = sr.AudioData(raw_pcm, 16000, 2)
+        text = ""
+        
+        if is_online():
+            try:
+                print("[NORA] Translating audio using Google Web API...")
+                text = await asyncio.to_thread(recognizer.recognize_google, audio_data, language="uz-UZ")
+            except sr.UnknownValueError:
+                pass
+            except Exception as e:
+                print(f"[Google Web STT Error] {e}")
+                
+        if not text:
+            print("[NORA] Speech detected but completely offline.")
+            return
+            
+        text = text.strip()
+        if text:
+            self.ui.write_log(f"You: {text}")
+            await self._process_offline_command(text)
+
+    async def _run_offline_loop(self):
+        """Runs the fully local offline execution loop."""
+        self.is_currently_offline = True
+        self.ui.status_text = "OFFLINE"
+        
+        offline_welcome = "Tizim oflayn rejimda. Kompyuterni boshqarish bo'yicha matnli yoki ovozli buyruqlaringizni yuborishingiz mumkin."
+        self.ui.write_log(f"Nora (Offline): {offline_welcome}")
+        speak_offline(offline_welcome, ui=self.ui)
+        
+        self.out_queue = asyncio.Queue(maxsize=10)
+        
+        listen_task = asyncio.create_task(self._listen_audio())
+        offline_audio_task = asyncio.create_task(self._process_offline_audio())
+        command_file_task = asyncio.create_task(self._watch_command_file())
+        
+        print("[NORA] 🛡️ Offline mode active.")
+        
+        while self.is_currently_offline:
+            await asyncio.sleep(5.0)
+            if is_online():
+                print("[NORA] 🌐 Internet connectivity detected! Switching back to online mode...")
+                self.is_currently_offline = False
+                
+                listen_task.cancel()
+                offline_audio_task.cancel()
+                command_file_task.cancel()
+                
+                reconnected_msg = "Internet aloqasi tiklandi. Onlayn rejimga qaytilmoqda..."
+                self.ui.write_log(f"SYS: {reconnected_msg}")
+                speak_offline(reconnected_msg, ui=self.ui)
+                await asyncio.sleep(2.0)
+                break
+
     def speak(self, text: str):
         """Thread-safe speak — any thread can call this."""
         if not self._loop or not self.session:
@@ -1025,13 +1170,15 @@ class NoraLive:
                             
                         if rms < self.noise_threshold:
                             data_to_send = bytes(len(resampled) * 2)
-                            # Revert HEARING to ONLINE after 1.5 seconds of silence
+                            # Revert HEARING to ONLINE/OFFLINE after 1.5 seconds of silence
+                            active_status = "OFFLINE" if self.is_currently_offline else "ONLINE"
                             if self.ui.status_text == "HEARING" and (time.time() - self._last_hearing_time > 1.5):
-                                self.ui.status_text = "ONLINE"
+                                self.ui.status_text = active_status
                         else:
                             data_to_send = resampled.tobytes()
                             self._last_hearing_time = time.time()
-                            if not self.ui.speaking and self.ui.status_text == "ONLINE":
+                            active_status = "OFFLINE" if self.is_currently_offline else "ONLINE"
+                            if not self.ui.speaking and self.ui.status_text == active_status:
                                 self.ui.status_text = "HEARING"
                             
                         await self.out_queue.put(data_to_send)
@@ -1274,16 +1421,27 @@ class NoraLive:
             await asyncio.sleep(1.5)
 
     async def run(self):
-        client = genai.Client(
-            api_key=_get_api_key(),
-            http_options={"api_version": "v1beta"}
+        # Bind UI text command callback to thread-safe handler
+        self.ui.command_callback = lambda cmd: asyncio.run_coroutine_threadsafe(
+            self.handle_ui_command(cmd), asyncio.get_event_loop()
         )
 
         while True:
+            # Check internet connectivity first
+            if not is_online():
+                print("[NORA] 🔌 No internet. Entering OFFLINE mode...")
+                await self._run_offline_loop()
+                continue
+
             try:
                 print("[NORA] 🔌 Connecting...")
                 self.ui.status_text = "CONNECTING"
                 config = self._build_config()
+                
+                client = genai.Client(
+                    api_key=_get_api_key(),
+                    http_options={"api_version": "v1beta"}
+                )
 
                 async with (
                     client.aio.live.connect(model=LIVE_MODEL, config=config) as session,
@@ -1293,6 +1451,7 @@ class NoraLive:
                     self._loop          = asyncio.get_event_loop() 
                     self.audio_in_queue = asyncio.Queue()
                     self.out_queue      = asyncio.Queue(maxsize=10)
+                    self.is_currently_offline = False
 
                     print("[NORA] ✅ Connected.")
                     self.ui.status_text = "ONLINE"
@@ -1315,11 +1474,16 @@ class NoraLive:
 
             except (Exception, ExceptionGroup) as e:
                 print(f"[NORA] ⚠️  Error: {e}")
-                self.ui.status_text = "RECONNECTING"
                 traceback.print_exc()
-
-            print("[NORA] 🔄 Reconnecting in 3s...")
-            await asyncio.sleep(3)
+                
+                # Check if failure is due to disconnection
+                if not is_online():
+                    print("[NORA] Network lost. Entering OFFLINE mode...")
+                    await self._run_offline_loop()
+                else:
+                    self.ui.status_text = "RECONNECTING"
+                    print("[NORA] 🔄 Reconnecting in 5s...")
+                    await asyncio.sleep(5)
 
 def main():
     ui = NoraUI("Nora_logo.png")
