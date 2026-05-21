@@ -587,13 +587,15 @@ class NoraLive:
         # Initialize offline capability components
         self.offline_nlu = OfflineNLU()
         self.is_currently_offline = False
+        self.consecutive_connection_failures = 0
+        self.last_connection_attempt = 0.0
 
     async def handle_ui_command(self, cmd: str) -> None:
         """Callback triggered when the user types a command in the UI."""
         cmd = cmd.strip()
         if not cmd:
             return
-        if self.is_currently_offline:
+        if self.is_currently_offline or not self.session:
             await self._process_offline_command(cmd)
         else:
             await self._send_text_command(cmd)
@@ -715,18 +717,23 @@ class NoraLive:
         while self.is_currently_offline:
             await asyncio.sleep(5.0)
             if is_online():
-                print("[NORA] 🌐 Internet connectivity detected! Switching back to online mode...")
-                self.is_currently_offline = False
-                
-                listen_task.cancel()
-                offline_audio_task.cancel()
-                command_file_task.cancel()
-                
-                reconnected_msg = "Internet aloqasi tiklandi. Onlayn rejimga qaytilmoqda..."
-                self.ui.write_log(f"SYS: {reconnected_msg}")
-                speak_offline(reconnected_msg, ui=self.ui)
-                await asyncio.sleep(2.0)
-                break
+                # If we had repeated failures connecting to Live API, enforce a longer connection cooldown (e.g. 60 seconds)
+                # to prevent rapid mode oscillation.
+                now = time.time()
+                cooldown = 60.0 if self.consecutive_connection_failures >= 2 else 5.0
+                if now - self.last_connection_attempt >= cooldown:
+                    print("[NORA] 🌐 Internet connectivity detected! Switching back to online mode...")
+                    self.is_currently_offline = False
+                    
+                    listen_task.cancel()
+                    offline_audio_task.cancel()
+                    command_file_task.cancel()
+                    
+                    reconnected_msg = "Internet aloqasi tiklandi. Onlayn rejimga qaytilmoqda..."
+                    self.ui.write_log(f"SYS: {reconnected_msg}")
+                    speak_offline(reconnected_msg, ui=self.ui)
+                    await asyncio.sleep(2.0)
+                    break
 
     def speak(self, text: str):
         """Thread-safe speak — any thread can call this."""
@@ -1436,6 +1443,7 @@ class NoraLive:
             try:
                 print("[NORA] 🔌 Connecting...")
                 self.ui.status_text = "CONNECTING"
+                self.last_connection_attempt = time.time()
                 config = self._build_config()
                 
                 client = genai.Client(
@@ -1452,6 +1460,7 @@ class NoraLive:
                     self.audio_in_queue = asyncio.Queue()
                     self.out_queue      = asyncio.Queue(maxsize=10)
                     self.is_currently_offline = False
+                    self.consecutive_connection_failures = 0
 
                     print("[NORA] ✅ Connected.")
                     self.ui.status_text = "ONLINE"
@@ -1476,9 +1485,16 @@ class NoraLive:
                 print(f"[NORA] ⚠️  Error: {e}")
                 traceback.print_exc()
                 
-                # Check if failure is due to disconnection
-                if not is_online():
-                    print("[NORA] Network lost. Entering OFFLINE mode...")
+                self.consecutive_connection_failures += 1
+                
+                # Check if failure is due to disconnection or repeated connection failures (e.g. invalid API key or region block)
+                if not is_online() or self.consecutive_connection_failures >= 2:
+                    if self.consecutive_connection_failures >= 2:
+                        print("[NORA] ⚠️ Live API connection failed repeatedly. Entering OFFLINE fallback mode...")
+                        self.ui.write_log("SYS: Onlayn ulanish muvaffaqiyatsiz bo'ldi. Oflayn rejim faollashtirilmoqda...")
+                    else:
+                        print("[NORA] Network lost. Entering OFFLINE mode...")
+                        self.ui.write_log("SYS: Tarmoq yo'q. Oflayn rejim faollashtirilmoqda...")
                     await self._run_offline_loop()
                 else:
                     self.ui.status_text = "RECONNECTING"
